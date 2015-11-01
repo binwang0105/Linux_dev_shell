@@ -1,0 +1,311 @@
+Part 1: The Simple Shell
+
+1. Your shell executable should be named w4118_sh. Your shell source code should be mainly in shell.c, but you are free to add additional source code files as long as your Makefile works, and compiles an executable named w4118_sh.
+
+A: My program meets the requirement perfectly. All the source code is in file “shell.c”, and the name of the final executable is w4118_sh(using makefile) 
+
+——----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+2. The shell should run continuously, and display a prompt when waiting for input. The prompt should be EXACTLY '$'. No spaces, no extra characters. Example with a command:
+	$ls -lha /home/w4118/my_docs
+
+A: My program meets the requirement perfectly. As you see the code below, the main part of the program is in a while loop, and the condition for terminating the loop is flag = 0. It means unless users input “exit” command, the program won’t exit by itself(in this case, that is “exit”, the while loop would receive a zero). I would also like to mention that the two linked lists are used for path and history commands, separately.
+
+int main(int argc, const char * argv[]){
+    char* inputCmd;
+    char** args;
+    int flag; //1 run, 0 exit
+    
+    struct Node* LinkList= initList();
+    historyList = initList();
+    
+    do{
+        waitingInput();
+        inputCmd = readInput(historyList);
+        args = parseInput(inputCmd);
+        flag = execInput(args, LinkList, historyList);
+        free(args);
+        free(inputCmd);
+    }while(flag);
+}
+
+
+What’s more, I implement the prompt ‘$’ of using a function called waitingInput, which is also in the while loop. Here I assume there is a heap space allocated by “malloc” function. The heap is used for command storage. The initial size of the heap is sizeof(char)*100, and the space could update its maximum capacity to 100*2(200), and then 200*2(400), and so on, according to the real number of arguments. 
+
+void waitingInput() {
+    printf("$");
+}
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+3. Your shell should read a line from stdin one at a time. This line should be parsed out into a command and all its arguments. In other words, tokenize it. You may assume that the only supported delimiter is the whitespace character (ASCII character number 32). You do not need to handle "special" characters. Do not worry about handling quotation marks, backslashes, and tab characters. This means your shell will be unable support arguments with spaces in them. For example, your shell will not support file paths with spaces in them.
+
+A: Meet the requirement perfectly. Lines could be read through getchar() function, and every time the program reads “\n” the program would set the value of current position to ‘\0’. 
+
+char* readInput(struct Node* hlist) {
+    
+    struct Node* HL = hlist;
+    int ptr = 0;
+    int DEFAULTLENGTH = 100;
+    char charc = 'n';
+    char* mallocSpace;
+    mallocSpace = (char*)malloc(sizeof(char)*DEFAULTLENGTH);
+    
+    while(TRUE){
+        charc = getchar();
+        
+        if(charc=='\n'){
+            mallocSpace[ptr]='\0';
+            //mov malloc to string for history list
+            char* Space = (char*)malloc(sizeof(char)*DEFAULTLENGTH);
+            Space = strcpy(Space, mallocSpace);
+            
+            hlist = addNode(hlist, Space);
+            
+            return mallocSpace;
+        }
+        else{
+            if(ptr==DEFAULTLENGTH){
+                //apply more space if full
+                DEFAULTLENGTH = DEFAULTLENGTH * 2;
+                mallocSpace = realloc(mallocSpace, DEFAULTLENGTH);
+                //if apply failure
+                if(mallocSpace==NULL)
+                    printf("error: %s\n", strerror(errno));
+            }
+            //copy
+            mallocSpace[ptr]= charc;
+        }
+        ++ptr;
+    }
+}
+
+Also, I would like to mention this code is also used for history command. I malloc a Space for saving a copy of the current command and its arguments so that the Space could be added into a path node later and finally form a linkedlist.
+
+I would also like to mention that all commands and arguments in my program are tokenized through function “strtok”. And in my program I assume the delimiter is blank space.
+
+ tokenSpace = (char**)malloc(sizeof(char)*DEFAULTLENGTH);
+    //tokenized
+    token = strtok(command, splliter);
+    
+    while(token!=NULL){
+        
+        //if full
+        if(ptr==DEFAULTLENGTH){
+            DEFAULTLENGTH = DEFAULTLENGTH*2;
+            tokenSpace = realloc(tokenSpace, DEFAULTLENGTH);
+            if(tokenSpace==NULL)
+                printf("error: %s\n", strerror(errno));
+        }
+        
+        tokenSpace[ptr] = token;
+        ++ptr;
+        token = strtok(NULL, splliter);
+    }
+    return tokenSpace;
+}
+
+——————————————————————————————————————————————————————————————————————————————-------------------------------------------------------------------------------
+
+4. You may set a reasonable maximum on the number of command line arguments, but your shell should handle input lines of any length.
+
+A: Meet this requirement perfectly. In my program the default maximum space for storage argument pointers is 100*sizeof(char). And the space is allocated by “malloc” function. However, once the number of the arguments typed by users reaches 100 arguments, the program itself will update its maximum capacity by multiplying 2, that is, through “realloc” function to rearrange the capacity to sizeof(char)*100*2=200, when full again, to 400, then 800… 
+
+ if(ptr==DEFAULTLENGTH){
+            DEFAULTLENGTH = DEFAULTLENGTH*2;
+            tokenSpace = realloc(tokenSpace, DEFAULTLENGTH);
+            if(tokenSpace==NULL)
+                printf("error: %s\n", strerror(errno));
+        }
+
+——————————————————————————————————————————————————————————————————————————————-------------------------------------------------------------------------------
+
+5. After parsing and lexing the command, your shell should execute it. A command can either be a reference to an executable OR a built-in shell command (see Part 2). For Part 1, just focus on running executables, and not on built-in commands. Executing commands that are not shell built-ins and are just the executable name (and not a full path to the executable) is done by invoking fork() and then invoking exec().
+You may NOT use the system() function, as it just invokes the /bin/sh shell to do all the work.
+
+A: Meet the requirement perfectly. If w_pid = 0, the child process would execute its executable. If w_pid>0, the parent would wait until its child completes its tasks. In other cases, the code would print error and return one to the main loop. There are many kinds of exec() available and I choose execvp to implement my executable function. I would like to mention that the function would search the right path by itself when executing executables. 
+
+int executable(char** args){
+    pid_t pid, w_pid;
+    int status;
+    
+    w_pid = fork();
+    
+    if (w_pid == 0){
+        // printf("Child is executing!\n");
+        execvp(args[0], args);
+    }
+    else if (w_pid > 0){
+        if( (pid = wait(&status)) < 0){
+            //    perror("Parent is wait");
+            //    _exit(1);
+        }
+        
+        //printf("Parent: finished\n");
+        
+    }else{
+        
+        printf("error: %s\n", strerror(errno));
+        //_exit(1);
+    }
+    return 1;
+}
+
+——————————————————————————————————————————————————————————————————————————————-------------------------------------------------------------------------------
+
+Part 2: Implement Built-in Commands: exit, cd, pwd, path, history
+
+1.exit - Simply exits your shell after performing any necessary clean up.
+
+A: Meet the requirement perfectly. The exit function would return “0” so the main loop would be terminated. Here I use char* inCmd[](including exit, cd, pwd, path, history, etc.) to storage all necessary punctuations and commands. The program would match every element typed by users, that is the args[], to every element in inCmd[]. Once a if-branch finds  its matching result, the program would go to that branch and run its code.
+
+——————————————————————————————————————————————————————————————————————————————-------------------------------------------------------------------------------
+
+2.cd [dir] - Short for "change directory", and will be used to change the current working directory of your shell. Do not worry about implementing the command line options that the real cd command has in Bash. Just implement cd such that it takes a single command line parameter: The directory to change to.
+
+else if(strcmp(args[0], inCmd[0]) == 0){
+        if(chdir(args[1])==0)
+            return 1;
+        else if(chdir(args[1])!=0){
+            printf("error: %s\n", strerror(errno));
+            //no parameter, no output
+            return 1;
+        }
+        else
+            return 1;
+    }
+
+A: Meet the requirement perfectly. If args[0] equals to “cd”, which means user just input a “cd” command, the program would run this if branch and set the right path for its user by calling chdir function.
+
+——————————————————————————————————————————————————————————————————————————————-------------------------------------------------------------------------------
+
+3.pwd - Prints the current working directory on a single line. So if a user invokes "cd /home/w4118" and then "pwd", the output will be "/home/w4118", followed by a single newline character.
+
+ else if(strcmp(args[0], inCmd[1]) == 0){
+        if(getcwd(buff, sizeof(buff))!=NULL)
+            printf("%s\n", buff);
+        else
+            printf("error: %s\n", strerror(errno));
+            return 1;
+    }
+
+A: Meet the requirement perfectly. In my program, pwd command uses getcwd to get current working path. If the getcwd get the right pointer successfully, the program will print the current path directly.
+
+——————————————————————————————————————————————————————————————————————————————-------------------------------------------------------------------------------
+
+4.path [+/- dir] - Manages a built-in path environment variable, similar to but distinct from ${PATH} in the Bash shell. Your internal path variable holds a list of possible paths in which to search for executables. The list of paths is empty by default (do not include /usr/sbin, etc by default), but may grow to any arbitrary size.
+path (without arguments) displays all the entries in the list separated by colons, e.g. "/bin:/usr/bin".
+path + /some/dir appends the given pathname to the path list.
+path - /some/dir removes the given pathname from the path list.
+In other words, if a user does not set any paths and provides ls (just the executable name), it should fail (unless the user did cd /bin first).
+If a user does not set any paths and invokes /bin/ls, it should work, assuming the ls executable exists in /bin.
+If a user invokes path + /bin and then executes ls, this should work, because your shell will find the ls executable in /bin, even without the user manually typing in the full path to /bin/ls.
+
+A: Meet all above requirements partially. In my program, I implement “path”, “path +” , “path -“ functions using linkedlist. At first the program would check whether args[0] equals “path” using strcmp function. If args[0]==“path”, then the program would check whether args[1] equals NULL first. If args[1]==NULL, which means path command has no other arguments, the program would return the current value of the path to the user. Otherwise, the program would detect whether the args[1]== “+” or “-”. If args[1] ==“+”, (“+” is inCmd[4]]), the program would run if-add branch and add args[2] to a node in the end of the path. Otherwise, the program would delete a node with the same value in the path.
+
+else if(strcmp(args[0], inCmd[3]) == 0){
+        //"+"
+        if(args[1]==NULL){
+            
+            if(L->next==NULL){
+                printf("\n");
+                return 1;
+            }
+            else
+            {
+            while(L!=NULL){
+                printf("%s", L->path);
+                listCounter++;
+                L=L->next;
+            }
+                printf("\n");
+                return 1;
+            }
+        }
+        else{
+        if(strcmp(args[1],inCmd[4]) == 0){
+            
+            char* listSpace = (char*)malloc(sizeof(char)*DEFAULTLENGTH);
+            listSpace = strcpy(listSpace, args[2]);
+            
+            //path is Null, edit the first node
+            if(L->path==NULL){
+                L=editNode(L, listSpace);
+                while(L!=NULL){
+                    printf("%s", L->path);
+                    listCounter++;
+                    L=L->next;
+                }
+                printf("\n");
+            }
+            else{
+                L = addNode(L, listSpace);
+                // printf("%s", L->path);
+                while(L!=NULL){
+                    printf("%s", L->path);
+                    listCounter++;
+                    L=L->next;
+                }
+                printf("\n");
+            }
+        }
+        if(strcmp(args[1],inCmd[5]) == 0){
+            L = delNode(L, args[2]);
+            while(L!=NULL){
+                printf("%s", L->path);
+                listCounter--;
+                L=L->next;
+            }
+            printf("\n");
+        }
+        return 1;
+        }
+    }
+
+——————————————————————————————————————————————————————————————————————————————-------------------------------------------------------------------------------
+
+5.history [-c] [offset] - Similar to the Bash built-in history command, but much simpler.
+history (without arguments) displays the last 100 commands the user ran, with an offset next to each command. The offset is the index of the command in the list, and valid values are 0 to 99, inclusive. 0 is the oldest command. Do not worry about persisting this list to a file; just store it in memory. Once more than 100 commands are executed, remove the oldest entry from the list to make room for the newer commands.
+history -c clears the entire history, removing all entries.
+history [offset] executes the command in history at the given offset. Print an error message of your choosing if the offset is not valid.
+
+A: The program meets all above requirements perfectly. Here I make an assumption that history is a command so if I input a history command first and input it again, the two history would show up on the screen. History offset could select a node whose value is same to args[1], that is the offset, by using searching in the history linked list. History -c could clear the list. What’s more, I would like to mention that once hListCounter>100, history function only displays the last 100 elements. To achieve this, I get the 100th element in the linked list first and then iterate it to get the rest of elements.
+
+
+if(strcmp(args[0], inCmd[6]) == 0){
+        if(args[1]!=NULL){
+            if(strcmp(args[1], inCmd[7])==0){
+                historyList = initList();
+                return 1;
+            }
+            else{
+                    struct Node* p = selectNodes(HL, args[1]);
+                    char* s = p->path;
+                    printf("%s\n", s);}
+            return 1;
+        }
+        
+        if(hListCounter<100)
+            HL = HL->next;
+        
+        if(hListCounter>=100)
+            HL = getlast_100th(HL);
+        
+        while(HL!=NULL){
+            printf("%d %s\n", hListCounter-1, HL->path);
+            HL=HL->next;
+            hListCounter++;
+        }
+        printf("\n");
+        return 1;
+    }
+
+——————————————————————————————————————————————————————————————————————————————-------------------------------------------------------------------------------
+
+References:
+
+[1] Operating System Concepts Essentials (2nd Edition)
+[2] Google: www.google.com
+[3] Baidu: www.baidu.com
+[4] Programming in C
+
